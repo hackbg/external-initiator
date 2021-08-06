@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"net/http"
 	"os"
 	"strconv"
 
@@ -15,10 +14,14 @@ import (
 	"github.com/smartcontractkit/external-initiator/store"
 	"github.com/smartcontractkit/external-initiator/subscriber"
 	"github.com/tendermint/tendermint/abci/types"
+	wasmTypes "github.com/terra-money/core/x/wasm/types"
 	"github.com/tidwall/gjson"
+	"google.golang.org/grpc"
 )
 
 const Name = "terra"
+
+var rpcAddr = os.Getenv("TERRA_RPC")
 
 type TerraParams struct {
 	ContractAddress string `json:"contract_address"`
@@ -32,19 +35,33 @@ type manager struct {
 	accountAddress  string
 	// fcdUrl          string
 	subscriber subscriber.ISubscriber
+	wasmClient wasmTypes.QueryClient
 }
 
 func createManager(sub store.Subscription) (*manager, error) {
 	conn, err := subscriber.NewSubscriber(sub.Endpoint)
+
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println("RPC ADDR", rpcAddr)
+
+	grpcConn, err := grpc.Dial(
+		rpcAddr,
+		grpc.WithInsecure(),
+	)
+
 	if err != nil {
 		return nil, err
 	}
 
+	wasmClient := wasmTypes.NewQueryClient(grpcConn)
 	return &manager{
 		endpointName:    sub.EndpointName,
 		contractAddress: sub.Terra.ContractAddress,
 		accountAddress:  sub.Terra.AccountAddress,
 		subscriber:      conn,
+		wasmClient:      wasmClient,
 	}, nil
 }
 
@@ -53,20 +70,21 @@ func (tm *manager) Stop() {
 }
 
 func (tm *manager) query(ctx context.Context, address, query string, t interface{}) error {
-	// TODO! remove hardcoded url; potentially use Tendermint http client
-	url := fmt.Sprintf("%s/wasm/contracts/%s/store?query_msg=%s", os.Getenv("TERRA_URL"), address, query)
-	resp, err := http.Get(url)
+	resp, err := tm.wasmClient.ContractStore(
+		context.Background(),
+		&wasmTypes.QueryContractStoreRequest{
+			ContractAddress: address,
+			QueryMsg:        []byte(query),
+		},
+	)
+
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
 
-	var decoded map[string]json.RawMessage
-	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
-		return err
-	}
+	err = json.Unmarshal(resp.QueryResult, &t)
 
-	if err := json.Unmarshal(decoded["result"], &t); err != nil {
+	if err != nil {
 		return err
 	}
 
