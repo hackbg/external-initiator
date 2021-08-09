@@ -78,6 +78,14 @@ func (fm fluxMonitorManager) SubscribeEvents(ctx context.Context, ch chan<- inte
 				OracleInitiated: string(round.StartedBy) == fm.accountAddress,
 			}
 		}
+		for _, round := range event.SubmissionReceived {
+			if round.Oracle != Addr(fm.accountAddress) {
+				continue
+			}
+			ch <- common.FMSubmissionReceived{
+				RoundID: uint32(round.RoundId),
+			}
+		}
 		for _, update := range event.AnswerUpdated {
 			ch <- common.FMEventAnswerUpdated{
 				LatestAnswer: update.Value.Int,
