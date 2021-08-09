@@ -32,14 +32,7 @@ func Test_extractEvents(t *testing.T) {
 	}
 }
 
-func Test_extractCustomAttributes(t *testing.T) {
-	events, _ := extractEvents(testData)
-	attributes := extractCustomAttributes(events)
-
-	if len(attributes) != 4 {
-		t.Errorf("Incorrect attributes %v", attributes)
-	}
-}
+// TODO! test parseEvents
 
 var testData = []byte(`{
    "jsonrpc": "2.0",
