@@ -130,7 +130,7 @@ func parseEvents(events []types.Event) (*EventRecords, error) {
 	for _, event := range events {
 		switch event.Type {
 
-		case "wasm_new_round":
+		case "wasm-new_round":
 			roundIdStr, err := getAttributeValue(event.Attributes, "round_id")
 			if err != nil {
 				return nil, err
@@ -157,7 +157,7 @@ func parseEvents(events []types.Event) (*EventRecords, error) {
 				StartedAt: startedAt,
 			})
 
-		case "wasm_submission_received":
+		case "wasm-submission_received":
 			submissionStr, err := getAttributeValue(event.Attributes, "submission")
 			if err != nil {
 				return nil, err
@@ -182,7 +182,7 @@ func parseEvents(events []types.Event) (*EventRecords, error) {
 				RoundId:    uint32(roundId),
 			})
 
-		case "wasm_answer_updated":
+		case "wasm-answer_updated":
 			roundIdStr, err := getAttributeValue(event.Attributes, "round_id")
 			if err != nil {
 				return nil, err
@@ -203,7 +203,7 @@ func parseEvents(events []types.Event) (*EventRecords, error) {
 				RoundId: uint32(roundId),
 			})
 
-		case "wasm_oracle_permissions_updated":
+		case "wasm-oracle_permissions_updated":
 			addedStr, err := getAttributeValue(event.Attributes, "added")
 			if err != nil {
 				return nil, err
