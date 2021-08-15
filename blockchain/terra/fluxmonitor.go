@@ -66,7 +66,7 @@ func (fm fluxMonitorManager) oracleIsEligibleToSubmit(ctx context.Context) bool 
 		return false
 	}
 
-	return status.EndingRound > 0
+	return status.EndingRound == 0xffffffff // uint32 max
 }
 
 func (fm fluxMonitorManager) SubscribeEvents(ctx context.Context, ch chan<- interface{}) error {

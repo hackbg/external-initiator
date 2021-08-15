@@ -135,7 +135,10 @@ func parseEvents(events []types.Event) (*EventRecords, error) {
 			if err != nil {
 				return nil, err
 			}
-			roundId, _ := strconv.Atoi(roundIdStr)
+			roundId, err := strconv.Atoi(roundIdStr)
+			if err != nil {
+				return nil, err
+			}
 			startedBy, err := getAttributeValue(event.Attributes, "started_by")
 			if err != nil {
 				return nil, err
@@ -147,8 +150,6 @@ func parseEvents(events []types.Event) (*EventRecords, error) {
 				if err != nil {
 					return nil, err
 				}
-				// startedAt.hasValue = true
-				// startedAt.uint64 = uint64(value)
 				startedAt = uint64(value)
 			}
 			eventRecords.NewRound = append(eventRecords.NewRound, EventNewRound{
@@ -169,8 +170,10 @@ func parseEvents(events []types.Event) (*EventRecords, error) {
 			if err != nil {
 				return nil, err
 			}
-			roundId, _ := strconv.Atoi(roundIdStr)
-
+			roundId, err := strconv.Atoi(roundIdStr)
+			if err != nil {
+				return nil, err
+			}
 			oracle, err := getAttributeValue(event.Attributes, "oracle")
 			if err != nil {
 				return nil, err
