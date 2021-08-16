@@ -265,25 +265,25 @@ func (fm *FluxMonitor) canSubmitToRound(initiate bool) bool {
 		return false
 	}
 
-	if fm.latestSubmittedRoundSuccess {
-		if initiate {
-			if int32(fm.state.RoundID+1-fm.latestInitiatedRoundID) <= fm.state.RestartDelay {
-				fm.logger.Info("Oracle needs to wait until restart delay passes until it can initiate a new round")
-				return false
-			}
-
-			if fm.latestSubmittedRoundID >= fm.state.RoundID+1 {
-				fm.logger.Info("Oracle already initiated this round")
-				return false
-			}
-		} else {
-			if fm.latestSubmittedRoundID != 0 && fm.latestSubmittedRoundID >= fm.state.RoundID {
-				fm.logger.Info("Oracle already submitted to this round")
-				return false
-			}
+	// if fm.latestSubmittedRoundSuccess {
+	if initiate {
+		if int32(fm.state.RoundID+1-fm.latestInitiatedRoundID) <= fm.state.RestartDelay {
+			fm.logger.Info("Oracle needs to wait until restart delay passes until it can initiate a new round")
+			return false
 		}
 
+		if fm.latestSubmittedRoundID >= fm.state.RoundID+1 {
+			fm.logger.Info("Oracle already initiated this round")
+			return false
+		}
+	} else {
+		if fm.latestSubmittedRoundID != 0 && fm.latestSubmittedRoundID >= fm.state.RoundID {
+			fm.logger.Info("Oracle already submitted to this round")
+			return false
+		}
 	}
+
+	// }
 
 	return true
 }

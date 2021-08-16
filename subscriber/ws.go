@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/smartcontractkit/external-initiator/store"
 
 	"github.com/gorilla/websocket"
@@ -28,6 +29,7 @@ var (
 )
 
 type websocketConnection struct {
+	id       string
 	endpoint string
 
 	requests              []*subscribeRequest
@@ -53,6 +55,7 @@ func NewWebsocketConnection(endpoint store.Endpoint) (*websocketConnection, erro
 	}
 
 	wsc := &websocketConnection{
+		id:                    uuid.New().String(),
 		endpoint:              endpoint.Url,
 		conn:                  conn,
 		subscriptionListeners: make(map[string]chan<- json.RawMessage),
@@ -199,11 +202,11 @@ func (wsc *websocketConnection) processIncomingMessage(payload json.RawMessage) 
 	// 	return
 	// }
 
-	ch, ok := wsc.subscriptionListeners["terra"]
+	ch, ok := wsc.subscriptionListeners[wsc.id]
 	if !ok {
 		// TODO: Should be improved in a way
 		time.Sleep(1 * time.Second)
-		ch, ok = wsc.subscriptionListeners["terra"]
+		ch, ok = wsc.subscriptionListeners[wsc.id]
 		if !ok {
 			return
 		}
@@ -278,7 +281,7 @@ func (wsc *websocketConnection) getSubscriptionId(req *subscribeRequest) (string
 		// err = json.Unmarshal(result, &subscriptionId)
 		// subscriptionId = uuid.New().String()
 		// subscriptionId = fmt.Sprint(nonce)
-		return "terra", err
+		return wsc.id, err
 	case <-timer.C:
 		return "", errorRequestTimeout
 	}
