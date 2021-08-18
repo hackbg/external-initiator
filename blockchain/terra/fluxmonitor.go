@@ -66,7 +66,7 @@ func (fm fluxMonitorManager) oracleIsEligibleToSubmit(ctx context.Context) bool 
 		return false
 	}
 
-	return status.EndingRound > 0
+	return status.EndingRound == 0xffffffff // uint32 max
 }
 
 func (fm fluxMonitorManager) SubscribeEvents(ctx context.Context, ch chan<- interface{}) error {
@@ -76,6 +76,14 @@ func (fm fluxMonitorManager) SubscribeEvents(ctx context.Context, ch chan<- inte
 			ch <- common.FMEventNewRound{
 				RoundID:         uint32(round.RoundId),
 				OracleInitiated: string(round.StartedBy) == fm.accountAddress,
+			}
+		}
+		for _, round := range event.SubmissionReceived {
+			if round.Oracle != Addr(fm.accountAddress) {
+				continue
+			}
+			ch <- common.FMSubmissionReceived{
+				RoundID: uint32(round.RoundId),
 			}
 		}
 		for _, update := range event.AnswerUpdated {

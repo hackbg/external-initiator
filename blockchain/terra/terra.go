@@ -53,7 +53,7 @@ func (tm *manager) Stop() {
 }
 
 func (tm *manager) query(ctx context.Context, address, query string, t interface{}) error {
-	// TODO! remove hardcoded url; potentially use Tendermint http client
+	// TODO! potentially use Tendermint http client
 	url := fmt.Sprintf("%s/wasm/contracts/%s/store?query_msg=%s", os.Getenv("TERRA_URL"), address, query)
 	resp, err := http.Get(url)
 	if err != nil {
@@ -98,14 +98,13 @@ func (tm *manager) subscribe(ctx context.Context, queryFilter string, handler fu
 				logger.Error(err)
 				continue
 			}
-			attributes := extractCustomAttributes(events)
-			event, err := attributesToEvent(attributes)
+			eventRecords, err := parseEvents(events)
 			if err != nil {
 				logger.Error(err)
 				continue
 			}
-			if event != nil {
-				handler(*event)
+			if eventRecords != nil {
+				handler(*eventRecords)
 			}
 		}
 	}()
@@ -114,7 +113,7 @@ func (tm *manager) subscribe(ctx context.Context, queryFilter string, handler fu
 }
 
 func extractEvents(data json.RawMessage) ([]types.Event, error) {
-	value := gjson.Get(string(data), "data.value.TxResult.result.events") // TODO! this parsing should be improved
+	value := gjson.Get(string(data), "data.value.TxResult.result.events")
 
 	var events []types.Event
 	err := json.Unmarshal([]byte(value.Raw), &events)
@@ -125,127 +124,159 @@ func extractEvents(data json.RawMessage) ([]types.Event, error) {
 	return events, nil
 }
 
-func extractCustomAttributes(events []types.Event) []types.EventAttribute {
+func parseEvents(events []types.Event) (*EventRecords, error) {
+	var eventRecords EventRecords
+
 	for _, event := range events {
-		if event.Type == "from_contract" {
-			return event.Attributes
+		switch event.Type {
+		case "wasm-new_round":
+			newRound, err := parseNewRoundEvent(event)
+			if err != nil {
+				return nil, err
+			}
+			eventRecords.NewRound = append(eventRecords.NewRound, *newRound)
+		case "wasm-submission_received":
+			submission, err := parseSubmissionReceivedEvent(event)
+			if err != nil {
+				return nil, err
+			}
+			eventRecords.SubmissionReceived = append(eventRecords.SubmissionReceived, *submission)
+		case "wasm-answer_updated":
+			answerUpdated, err := parseAnswerUpdatedEvent(event)
+			if err != nil {
+				return nil, err
+			}
+			eventRecords.AnswerUpdated = append(eventRecords.AnswerUpdated, *answerUpdated)
+		case "wasm-oracle_permissions_updated":
+			permissionsUpdated, err := parseOraclePermissionsUpdatedEvent(event)
+			if err != nil {
+				return nil, err
+			}
+			eventRecords.OraclePermissionsUpdated = append(eventRecords.OraclePermissionsUpdated, permissionsUpdated...)
 		}
 	}
 
-	return nil
+	return &eventRecords, nil
 }
 
-func attributesToEvent(attributes []types.EventAttribute) (*EventRecords, error) {
-	action, err := getAttributeValue(attributes, "action")
+func parseNewRoundEvent(event types.Event) (*EventNewRound, error) {
+	attributes, err := getRequiredAttributes(event, []string{"round_id", "started_by"})
+	if err != nil {
+		return nil, err
+	}
+	roundId, err := strconv.Atoi(attributes["round_id"])
+	if err != nil {
+		return nil, err
+	}
+	var startedAt uint64
+	startedAtStr, err := getAttributeValue(event, "started_at")
+	if err == nil {
+		value, err := strconv.Atoi(startedAtStr)
+		if err != nil {
+			return nil, err
+		}
+		startedAt = uint64(value)
+	}
+	return &EventNewRound{
+		RoundId:   uint32(roundId),
+		StartedBy: Addr(attributes["started_by"]),
+		StartedAt: startedAt,
+	}, nil
+}
+
+func parseSubmissionReceivedEvent(event types.Event) (*EventSubmissionReceived, error) {
+	attributes, err := getRequiredAttributes(event, []string{"submission", "round_id", "oracle"})
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO! improve event extraction
-	switch action {
-	case "new_round":
-		roundIdStr, err := getAttributeValue(attributes, "round_id")
-		if err != nil {
-			return nil, err
-		}
-		roundId, _ := strconv.Atoi(roundIdStr)
-		startedBy, err := getAttributeValue(attributes, "started_by")
-		if err != nil {
-			return nil, err
-		}
-		var startedAt uint64
-		startedAtStr, err := getAttributeValue(attributes, "started_at")
-		if err == nil {
-			value, err := strconv.Atoi(startedAtStr)
-			if err != nil {
-				return nil, err
-			}
-			// startedAt.hasValue = true
-			// startedAt.uint64 = uint64(value)
-			startedAt = uint64(value)
-		}
-		return &EventRecords{
-			NewRound: []EventNewRound{
-				{
-					RoundId:   uint32(roundId),
-					StartedBy: Addr(startedBy),
-					StartedAt: startedAt,
-				},
-			},
-		}, nil
-	case "answer_updated":
-		roundIdStr, err := getAttributeValue(attributes, "round_id")
-		if err != nil {
-			return nil, err
-		}
-		roundId, err := strconv.Atoi(roundIdStr)
-		if err != nil {
-			return nil, err
-		}
-		valueStr, err := getAttributeValue(attributes, "current")
-		if err != nil {
-			return nil, err
-		}
-		value := new(big.Int)
-		value, _ = value.SetString(valueStr, 10)
+	submission := new(big.Int)
+	submission, _ = submission.SetString(attributes["submission"], 10)
 
-		return &EventRecords{
-			AnswerUpdated: []EventAnswerUpdated{
-				{
-					Value:   Value{*value},
-					RoundId: uint32(roundId),
-				},
-			},
-		}, nil
-	case "oracle_permissions_updated":
-		var permissionChanges []EventOraclePermissionsUpdated
-
-		addedStr, err := getAttributeValue(attributes, "added")
-		if err != nil {
-			return nil, err
-		}
-		var added []string
-		err = json.Unmarshal([]byte(addedStr), &added)
-		if err != nil {
-			return nil, err
-		}
-		for _, oracle := range added {
-			permissionChanges = append(permissionChanges, EventOraclePermissionsUpdated{
-				Oracle: Addr(oracle),
-				Bool:   true,
-			})
-		}
-
-		removedStr, err := getAttributeValue(attributes, "removed")
-		if err != nil {
-			return nil, err
-		}
-		var removed []string
-		err = json.Unmarshal([]byte(removedStr), &removed)
-		if err != nil {
-			return nil, err
-		}
-		for _, oracle := range removed {
-			permissionChanges = append(permissionChanges, EventOraclePermissionsUpdated{
-				Oracle: Addr(oracle),
-				Bool:   false,
-			})
-		}
-
-		return &EventRecords{
-			OraclePermissionsUpdated: permissionChanges,
-		}, nil
+	roundId, err := strconv.Atoi(attributes["round_id"])
+	if err != nil {
+		return nil, err
 	}
 
-	return nil, nil
+	return &EventSubmissionReceived{
+		Oracle:     Addr(attributes["oracle"]),
+		Submission: Value{*submission},
+		RoundId:    uint32(roundId),
+	}, nil
 }
 
-func getAttributeValue(attributes []types.EventAttribute, attributeKey string) (string, error) {
-	for _, attr := range attributes {
+func parseAnswerUpdatedEvent(event types.Event) (*EventAnswerUpdated, error) {
+	attributes, err := getRequiredAttributes(event, []string{"round_id", "current"})
+	if err != nil {
+		return nil, err
+	}
+
+	roundId, err := strconv.Atoi(attributes["round_id"])
+	if err != nil {
+		return nil, err
+	}
+
+	value := new(big.Int)
+	value, _ = value.SetString(attributes["current"], 10)
+
+	return &EventAnswerUpdated{
+		Value:   Value{*value},
+		RoundId: uint32(roundId),
+	}, nil
+}
+
+func parseOraclePermissionsUpdatedEvent(event types.Event) (events []EventOraclePermissionsUpdated, err error) {
+	attributes, err := getRequiredAttributes(event, []string{"added", "removed"})
+	if err != nil {
+		return nil, err
+	}
+
+	var added []string
+	err = json.Unmarshal([]byte(attributes["added"]), &added)
+	if err != nil {
+		return nil, err
+	}
+	for _, oracle := range added {
+		events = append(events, EventOraclePermissionsUpdated{
+			Oracle: Addr(oracle),
+			Bool:   true,
+		})
+	}
+
+	var removed []string
+	err = json.Unmarshal([]byte(attributes["removed"]), &removed)
+	if err != nil {
+		return nil, err
+	}
+	for _, oracle := range removed {
+		events = append(events, EventOraclePermissionsUpdated{
+			Oracle: Addr(oracle),
+			Bool:   false,
+		})
+	}
+
+	return
+}
+
+func getAttributeValue(event types.Event, attributeKey string) (string, error) {
+	for _, attr := range event.Attributes {
 		if string(attr.Key) == attributeKey {
 			return string(attr.Value), nil
 		}
 	}
 
 	return "", fmt.Errorf("attribute key %s does not exist", attributeKey)
+}
+
+func getRequiredAttributes(event types.Event, attributes []string) (map[string]string, error) {
+	var attrs = make(map[string]string)
+	for _, attr := range attributes {
+		value, err := getAttributeValue(event, attr)
+		if err != nil {
+			return nil, err
+		}
+
+		attrs[attr] = value
+	}
+	return attrs, nil
 }
