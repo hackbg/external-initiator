@@ -3,7 +3,10 @@ package terra
 import (
 	"encoding/json"
 	"math/big"
+	"reflect"
 	"testing"
+
+	"github.com/tendermint/tendermint/abci/types"
 )
 
 func Test_UnmarshalJSONValue(t *testing.T) {
@@ -32,12 +35,171 @@ func Test_extractEvents(t *testing.T) {
 	}
 }
 
-// TODO! test parseEvents
+func Test_getRequiredAttributes(t *testing.T) {
+	event := types.Event{
+		Type: "coin_spent",
+		Attributes: []types.EventAttribute{
+			{
+				Key:   []byte("spender"),
+				Value: []byte("terra1x46rqay4d3cssq8gxxvqz8xt6nwlz4td20k38v"),
+				Index: true,
+			},
+			{
+				Key:   []byte("amount"),
+				Value: []byte("149032000000uluna"),
+				Index: true,
+			},
+		},
+	}
+	expected := map[string]string{
+		"spender": "terra1x46rqay4d3cssq8gxxvqz8xt6nwlz4td20k38v",
+		"amount":  "149032000000uluna",
+	}
+
+	attributes, _ := getRequiredAttributes(event, []string{"amount", "spender"})
+	if !reflect.DeepEqual(attributes, expected) {
+		t.Error("Incorrect attributes extracted")
+	}
+
+	event = types.Event{
+		Type: "coin_spent",
+		Attributes: []types.EventAttribute{
+			{
+				Key:   []byte("amount"),
+				Value: []byte("149032000000uluna"),
+				Index: true,
+			},
+		},
+	}
+
+	attributes, err := getRequiredAttributes(event, []string{"amount", "spender"})
+	if attributes != nil && err == nil {
+		t.Error("Error expected")
+	}
+}
+
+func Test_parseNewRoundEvent(t *testing.T) {
+	event := types.Event{
+		Type: "wasm-new_round",
+		Attributes: []types.EventAttribute{
+			{
+				Key:   []byte("round_id"),
+				Value: []byte("32"),
+				Index: true,
+			},
+			{
+				Key:   []byte("started_by"),
+				Value: []byte("terra1x46rqay4d3cssq8gxxvqz8xt6nwlz4td20k38v"),
+				Index: true,
+			},
+		},
+	}
+
+	expected := EventNewRound{
+		RoundId:   32,
+		StartedBy: "terra1x46rqay4d3cssq8gxxvqz8xt6nwlz4td20k38v",
+		StartedAt: 0,
+	}
+
+	res, _ := parseNewRoundEvent(event)
+	if !reflect.DeepEqual(*res, expected) {
+		t.Error("Incorrect parsing")
+	}
+}
+
+func Test_parseSubmissionReceivedEvent(t *testing.T) {
+	event := types.Event{
+		Type: "wasm-submission_received",
+		Attributes: []types.EventAttribute{
+			{
+				Key:   []byte("round_id"),
+				Value: []byte("32"),
+				Index: true,
+			},
+			{
+				Key:   []byte("oracle"),
+				Value: []byte("terra1x46rqay4d3cssq8gxxvqz8xt6nwlz4td20k38v"),
+				Index: true,
+			},
+			{
+				Key:   []byte("submission"),
+				Value: []byte("100000000"),
+				Index: true,
+			},
+		},
+	}
+
+	expected := &EventSubmissionReceived{
+		RoundId:    32,
+		Oracle:     "terra1x46rqay4d3cssq8gxxvqz8xt6nwlz4td20k38v",
+		Submission: Value{*big.NewInt(100000000)},
+	}
+
+	res, _ := parseSubmissionReceivedEvent(event)
+	if !reflect.DeepEqual(res, expected) {
+		t.Error("Incorrect parsing")
+	}
+}
+
+func Test_parseAnswerUpdatedEvent(t *testing.T) {
+	event := types.Event{
+		Type: "wasm-answer_updated",
+		Attributes: []types.EventAttribute{
+			{
+				Key:   []byte("round_id"),
+				Value: []byte("32"),
+				Index: true,
+			},
+			{
+				Key:   []byte("current"),
+				Value: []byte("100000000"),
+				Index: true,
+			},
+		},
+	}
+
+	expected := &EventAnswerUpdated{
+		RoundId: 32,
+		Value:   Value{*big.NewInt(100000000)},
+	}
+
+	res, _ := parseAnswerUpdatedEvent(event)
+	if !reflect.DeepEqual(res, expected) {
+		t.Error("Incorrect parsing")
+	}
+}
+
+func Test_parseOraclePermissionsUpdatedEvent(t *testing.T) {
+	event := types.Event{
+		Type: "wasm-permissions_updated",
+		Attributes: []types.EventAttribute{
+			{
+				Key:   []byte("added"),
+				Value: []byte(`["addr1", "addr2"]`),
+				Index: true,
+			},
+			{
+				Key:   []byte("removed"),
+				Value: []byte(`["addr3", "addr4"]`),
+				Index: true,
+			},
+		},
+	}
+
+	expected := []EventOraclePermissionsUpdated{
+		{Oracle: "addr1", Bool: true},
+		{Oracle: "addr2", Bool: true},
+		{Oracle: "addr3", Bool: false},
+		{Oracle: "addr4", Bool: false},
+	}
+
+	res, _ := parseOraclePermissionsUpdatedEvent(event)
+	if !reflect.DeepEqual(res, expected) {
+		t.Error("Incorrect parsing")
+	}
+}
 
 var testData = []byte(`{
-   "jsonrpc": "2.0",
-   "id": 1,
-   "result": {
        "query": "execute_contract.contract_address='terra183rx7pqzjwj4mj7rxrrgv589zsfl22yeagalc0'",
        "data": {
            "type": "tendermint/event/Tx",
@@ -241,5 +403,4 @@ var testData = []byte(`{
                "A56465B67861C9C46D49B22CA42F5EC3FE2035D1D2A4A91C31AE0158B65AC439"
            ]
        }
-   }
-}`)
+   }`)
