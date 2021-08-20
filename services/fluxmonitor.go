@@ -236,7 +236,7 @@ func (fm *FluxMonitor) eventListener(ch <-chan interface{}) {
 				fm.logger.Debug("Got new round event: ", event)
 				fm.resetHeartbeatTimer()
 				fm.state.RoundID = event.RoundID
-				if event.OracleInitiated {
+				if event.OracleInitiated || fm.latestSubmittedRoundID == event.RoundID {
 					fm.latestInitiatedRoundID = event.RoundID
 					continue
 				}
