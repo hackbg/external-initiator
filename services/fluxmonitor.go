@@ -236,7 +236,7 @@ func (fm *FluxMonitor) eventListener(ch <-chan interface{}) {
 				fm.logger.Debug("Got new round event: ", event)
 				fm.resetHeartbeatTimer()
 				fm.state.RoundID = event.RoundID
-				if event.OracleInitiated || fm.latestSubmittedRoundID == event.RoundID {
+				if event.OracleInitiated {
 					fm.latestInitiatedRoundID = event.RoundID
 					continue
 				}
@@ -300,6 +300,10 @@ func (fm *FluxMonitor) checkAndSendJob(initiate bool) error {
 	roundId := fm.state.RoundID
 	if initiate {
 		roundId++
+	}
+
+	if fm.latestSubmittedRoundID == roundId {
+		return nil
 	}
 
 	if !fm.ValidLatestResult() {
