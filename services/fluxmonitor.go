@@ -302,10 +302,6 @@ func (fm *FluxMonitor) checkAndSendJob(initiate bool) error {
 		roundId++
 	}
 
-	if fm.latestSubmittedRoundID == roundId {
-		return nil
-	}
-
 	if !fm.ValidLatestResult() {
 		err := fm.pollWithRetry()
 		if err != nil {
